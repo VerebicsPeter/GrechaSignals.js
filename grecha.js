@@ -74,13 +74,16 @@ function tag(name, ...children) {
             const callback = (value) => proxyNode.firstChild.nodeValue = String(value);
             watch(callback);
             proxyNode.parentElement.addEventListener("dom:removed", MakeRemoveHook(callback));
-        }
+        } 
         // encapsulate a complex value (node)
-        else {
+        else if (currValue instanceof Node) {
             proxyNode.appendChild(currValue);
             const callback = (value) => proxyNode.firstChild.replaceWith(value);
             watch(callback);
             proxyNode.parentElement.addEventListener("dom:removed", MakeRemoveHook(callback));
+        }
+        else {
+            console.error(`Child was not an instance of a node or primitive:\n${currValue}`);
         }
     }
 
@@ -130,7 +133,7 @@ function tag(name, ...children) {
     return result;
 }
 
-const MUNDANE_TAGS = ["canvas", "h1", "h2", "h3", "p", "a", "div", "span", "select"];
+const MUNDANE_TAGS = ["canvas", "h1", "h2", "h3", "p", "a", "div", "span", "select", "button"];
 for (let tagName of MUNDANE_TAGS) {
     window[tagName] = (...children) => tag(tagName, ...children);
 }
@@ -181,7 +184,6 @@ const mutationObserver = new MutationObserver((mutations) => {
         node.dispatchEvent(new CustomEvent("dom:created", {bubbles: true}));
       }
     });
-
     // Removed nodes
     mutation.removedNodes.forEach(node => {
       if (node.nodeType === 1 || node.nodeType === 3) {
@@ -204,4 +206,20 @@ function ite$(stateFunction, thenTag, elseTag) {
     const iteNode = span(getter()?thenTag:elseTag);
     watch(value => iteNode.firstChild.replaceWith(value?thenTag:elseTag));
     return iteNode;
+}
+
+function for$(stateFunction, itemComponentFunction) {
+    const state = stateFunction.__parent;
+    if ( !state ) {
+        throw new TypeError("For must be created on a state getter function of array!");
+    }
+    const [ getter, setter, watch ] = state;
+    const value = getter();
+    // NOTE: maybe check if there is such a thing as iterable in JS
+    if (!(value instanceof Array)) {
+        throw new TypeError("For must be created on a state getter function of array!");
+    }
+    const forNode = span(span(...value.map(itemComponentFunction)));
+    watch(value => forNode.firstChild.replaceWith(span(...value.map(itemComponentFunction))));
+    return forNode;
 }
