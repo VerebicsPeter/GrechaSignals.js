@@ -33,30 +33,18 @@ function isStateFunction(obj) {
     return typeof(obj) === "function" && isStateObject(obj.__parent);
 }
 
-function isDerivedState(getter, setter) {
-    return getter.__derive && !setter.__parent
-}
-
-// NOTE: the derived state object is a special readonly state object which does not have a setter
-// TODO: for now this is limited as it only allows one level derived state...
+// NOTE: the derived state object is a special readonly state object which does not expose a setter
 function derived$(stateFunction, func) {
     const state = stateFunction.__parent;
     if ( !state ) {
         throw new TypeError(`Value wrapped with derived is not a state function:\n${stateFunction}`);
     }
     const [ getter, setter, watch, unwatch ] = state;
-    if (isDerivedState(getter, setter)) {
-        throw new TypeError(`Value wrapped with derived comes from derived state:\n${state}`);
-    }
-    const dGetter = () => func(getter());
-    const dSetter = () => {
-        throw new Error("Tried to call setter of a derived state function.");
-    }
-    const derived = [ dGetter, dSetter, watch, unwatch ];
-    dGetter.__parent = derived;
-    dGetter.__derive = func;
-    derived.__stateobject = true;
-    return derived;
+    const initValue = func(getter());
+    const [ dGetter, dSetter, dWatch, dUnwatch ] = state$(initValue);
+    watch((value) => dSetter(func(value)));
+    // Does not expose the setter and the user should use the state as readonly
+    return [ dGetter, dWatch ];
 }
 
 function tag(name, ...children) {
@@ -66,16 +54,8 @@ function tag(name, ...children) {
         const [ getter, setter, watch, unwatch ] = child;
         const currValue = getter();
         
-        const isDerived = isDerivedState(getter, setter);
-        const valWrapper = isDerived ? getter.__derive : (x) => x; 
-        
-        if ( !isDerived ) {
-            console.debug("Reactive value:");
-            console.debug(currValue);
-        } else {
-            console.debug("Derived value:");
-            console.debug(currValue);
-        }
+        console.debug("Reactive value:");
+        console.debug(currValue);
 
         const MakeRemoveHook = (callback) => {
             return () => {
@@ -89,16 +69,16 @@ function tag(name, ...children) {
 
         // encapsulate primitive value
         if (PRIMITIVE_TYPES.includes(typeof(currValue))) {
-            const textNode = document.createTextNode(String(getter()));
+            const textNode = document.createTextNode(String(currValue));
             proxyNode.appendChild(textNode);
-            const callback = (value) => proxyNode.firstChild.nodeValue = String(valWrapper(value));
+            const callback = (value) => proxyNode.firstChild.nodeValue = String(value);
             watch(callback);
             proxyNode.parentElement.addEventListener("dom:removed", MakeRemoveHook(callback));
         }
         // encapsulate a complex value (node)
         else {
             proxyNode.appendChild(currValue);
-            const callback = (value) => proxyNode.firstChild.replaceWith(valWrapper(value));
+            const callback = (value) => proxyNode.firstChild.replaceWith(value);
             watch(callback);
             proxyNode.parentElement.addEventListener("dom:removed", MakeRemoveHook(callback));
         }
@@ -131,6 +111,11 @@ function tag(name, ...children) {
         this.onclick = callback;
         return this;
     };
+
+    result.on$ = function(event, callback) {
+        this.addEventListener(event, callback);
+        return this;
+    }
 
     result.style$ = function(styleObj) {
         for (const key in styleObj) this.style[key] = styleObj[key];
@@ -193,23 +178,20 @@ const mutationObserver = new MutationObserver((mutations) => {
     // Created nodes
     mutation.addedNodes.forEach(node => {
       if (node.nodeType === 1 || node.nodeType === 3) {
-        node.dispatchEvent(new CustomEvent("dom:created", {bubbles:false}));
+        node.dispatchEvent(new CustomEvent("dom:created", {bubbles: true}));
       }
     });
 
     // Removed nodes
     mutation.removedNodes.forEach(node => {
       if (node.nodeType === 1 || node.nodeType === 3) {
-        node.dispatchEvent(new CustomEvent("dom:removed", {bubbles:false}));
+        node.dispatchEvent(new CustomEvent("dom:removed", {bubbles: true}));
       }
     });
   }
 });
 
-mutationObserver.observe(document.documentElement, {
-  childList: true,
-  subtree: true
-});
+mutationObserver.observe(document.documentElement, { childList: true, subtree: true });
 
 
 function ite$(stateFunction, thenTag, elseTag) {
@@ -218,9 +200,6 @@ function ite$(stateFunction, thenTag, elseTag) {
         throw new TypeError("If-then-else must be created on a state getter function!");
     }
     const [ getter, setter, watch ] = state;
-    if (isDerivedState(getter, setter)) {
-        throw new TypeError("If-then-else must be created on a state getter function!");
-    }
     
     const iteNode = span(getter()?thenTag:elseTag);
     watch(value => iteNode.firstChild.replaceWith(value?thenTag:elseTag));

@@ -22,23 +22,30 @@
       const [kasha, setKasha, watchKasha] = state$(kashaSoft);
       const [getToggle, setToggle] = state$(false);
       const [doubleCount] = derived$(count, (x) => 2*x);
-
+      const [quadrupleCount] = derived$(doubleCount, (x) => 2*x);
       
       watchCount((count) => {
         console.log(`Count changed to ${count}.`);
       });
+
+      const onToggle = () => setToggle(!getToggle());
       
       const root = router({
+        "/foo": div(h1("Foo"), p(LOREM), a("Home").att$("href", "#")),
+        "/bar": div(h1("Bar"), p(LOREM), a("Home").att$("href", "#")),
         "/": div(
           h1("Grecha.js"),
           div(a("Foo").att$("href", "#/foo")),
           div(a("Bar").att$("href", "#/bar")),
-          div("Count x1: ", span(count)),
-          div("Count x2: ", span(doubleCount)),
+          div("Count: ", span(count)),
+          div("Count (x2): ", span(doubleCount)),
+          div("Count (x4): ", span(quadrupleCount)),
           div("It's a: ", ite$(getToggle, span("foo"), span("bar")))
-          .style$({ cursor: "pointer", border: "1px solid black" })
-          .onclick$(() => setToggle(!getToggle())),
+          .style$({ border: "1px solid black" })
+          .on$("mouseenter", onToggle)
+          .on$("mouseleave", onToggle),
           div(kasha)
+          .style$({ cursor: "pointer" })
           .onclick$(
             () => {
               const newCount = count()+1
@@ -47,8 +54,6 @@
             }
           )
         ),
-        "/foo": div(h1("Foo"), p(LOREM), a("Home").att$("href", "#")),
-        "/bar": div(h1("Bar"), p(LOREM), a("Home").att$("href", "#")),
       });
 
       entry.appendChild(root);
