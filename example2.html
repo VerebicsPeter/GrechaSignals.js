@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html>
+  <head><title>Grecha Signals - Todo App</title></head>
+  <body>
+    <div id="entry"></div>
+    <script src="./grecha.js"></script>
+    <script>
+      const todos = [
+        {id:1, text:"buy milk", done:false},
+        {id:2, text:"buy bread", done:false},
+      ];
+
+      const [showDoneOnly, setShowDoneOnly] = state$(false);
+      const [getTodos, setTodos, watchTodos] = state$(todos);
+
+      const createTodo = (todo) => {
+        const newTodos = getTodos();
+        newTodos.push(todo);
+        setTodos(newTodos);
+      }
+
+      const removeTodo = (todo) => {
+        const newTodos = getTodos().filter((other)=>other!==todo);
+        setTodos(newTodos);
+      }
+
+      const TodoForm = () => {
+        const [getTodoId, setTodoId] = state$(getTodos().length);
+        const [todoText, setTodoText, watchTodoText] = state$("");
+        
+        const todoInput = 
+        input("text")
+        .att$("value", todoText())
+        .on$("input", (evt) => setTodoText(evt.target.value));
+        
+        return div(
+          div("Todo Text: ", todoInput),
+          
+          button("Create Todo").
+          onclick$(() => {
+            if (todoText()) {
+              setTodoId(getTodoId()+1)  // increment id
+              createTodo({ id: getTodoId(), text: todoText(), done:false })
+            } else {
+              alert("Please enter todo text.")
+            }
+          }),
+          
+          button(ite$(showDoneOnly, "Show All", "Show Done")).
+          onclick$(()=>setShowDoneOnly(!showDoneOnly())),
+        );
+      }
+      
+      const TodoItem = (todo) => {
+        const [getText, setText, watchText] = state$(todo.text);
+        const [getDone, setDone, watchDone] = state$(todo.done);
+        const [shouldShow] = derived$(
+          [showDoneOnly,getDone],
+          (showDoneOnly,getDone) => showDoneOnly ? getDone : true
+        );
+
+        return div(
+          div("Todo: ", span(getText)),
+          div("Done: ", span(getDone)),
+          button("Remove")
+          .onclick$(() => removeTodo(todo)),
+          button(ite$(getDone, "Mark Todo", "Mark Done"))
+          .onclick$(() => {setDone(!getDone()); todo.done=getDone()}),
+          div("This todo is completed!")
+          .show$(getDone)
+          .style$({ fontSize: "11px" })
+        )
+        .show$(shouldShow)
+        .style$({ border: "1px solid black", marginTop: "1px"});
+      }
+
+      watchTodos((todos) => {
+        console.log("Todos changed:");
+        console.log(todos);
+      });
+      
+      const root = router({
+        "/": div(
+          TodoForm(),
+          for$(getTodos, TodoItem, {key: todo => todo.id})
+        )
+      });
+
+      entry.appendChild(root);
+    </script>
+  </body>
+</html>

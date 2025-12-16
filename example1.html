@@ -28,7 +28,7 @@
           h1("Grecha.js"),
           div(a("Foo").att$("href", "#/foo")),
           div(a("Bar").att$("href", "#/bar")),
-          div("Count: ", span(count)),
+          div("Count: ", span(count).att$("id", "aboba")),
           div("Count (x2): ", span(doubleCount)),
           div("Count (x4): ", span(quadrupleCount)),
           div("It's a: ", ite$(getToggle, span("foo"), span("bar")))
@@ -37,8 +37,7 @@
           .on$("mouseleave", onToggle),
           div(kasha)
           .style$({ cursor: "pointer" })
-          .onclick$(
-            () => {
+          .onclick$(() => {
               const newCount = count()+1
               setCount(newCount)
               setKasha((newCount % 2) ? kashaHard : kashaSoft)

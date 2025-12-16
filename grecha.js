@@ -11,12 +11,14 @@ function state$(initial) {
     };
     const addWatch = (watcher) => {
         watchers.add(watcher);
+        return () => delWatch(watcher);
     }
     const delWatch = (watcher) => {
         watchers.delete(watcher);
     }
+    const refresh = () => set(get());
 
-    const state = [get, set, addWatch, delWatch];
+    const state = [get, set, addWatch, delWatch, refresh];
     // Add state context to the getter
     get.__parent = state;
     set.__parent = state;
@@ -33,18 +35,38 @@ function isStateFunction(obj) {
     return typeof(obj) === "function" && isStateObject(obj.__parent);
 }
 
+function normalizeDeps(deps) {
+    return Array.isArray(deps) ? deps : [deps];
+}
+
 // NOTE: the derived state object is a special readonly state object which does not expose a setter
-function derived$(stateFunction, func) {
-    const state = stateFunction.__parent;
-    if ( !state ) {
-        throw new TypeError(`Value wrapped with derived is not a state function:\n${stateFunction}`);
-    }
-    const [ getter, setter, watch, unwatch ] = state;
-    const initValue = func(getter());
-    const [ dGetter, dSetter, dWatch, dUnwatch ] = state$(initValue);
-    watch((value) => dSetter(func(value)));
-    // Does not expose the setter and the user should use the state as readonly
-    return [ dGetter, dWatch ];
+function derived$(deps, compute) {
+    const depGetters = normalizeDeps(deps);
+
+    const depStates = depGetters.map(g => {
+        const state = g.__parent;
+        if ( !state ) {
+            throw new TypeError("derived$ dependencies must be state getters");
+        }
+        return state;
+    });
+
+    const getters = depStates.map(([getter]) => getter);
+
+    const computeValue = () => compute(...getters.map(g => g()));
+
+    const [dGetter, dSetter, dWatch] = state$(computeValue());
+
+    // watch all dependencies and recompute if one of them changes
+    const unwatchers = depStates.map(([,, watch]) =>
+        watch((_) => {dSetter(computeValue())})
+    );
+
+    dGetter.__cleanup = () => {
+        for (const unwatcher of unwatchers) unwatcher();
+    };
+
+    return [dGetter, dWatch];
 }
 
 function tag(name, ...children) {
@@ -54,8 +76,7 @@ function tag(name, ...children) {
         const [ getter, setter, watch, unwatch ] = child;
         const currValue = getter();
         
-        console.debug("Reactive value:");
-        console.debug(currValue);
+        console.debug(`Reactive value: ${currValue}`);
 
         const MakeRemoveHook = (callback) => {
             return () => {
@@ -118,15 +139,29 @@ function tag(name, ...children) {
     result.on$ = function(event, callback) {
         this.addEventListener(event, callback);
         return this;
-    }
+    };
 
     result.style$ = function(styleObj) {
         for (const key in styleObj) this.style[key] = styleObj[key];
         return this;
-    }
+    };
 
     result.class$ = function(...classes) {
         this.classList.add(...classes);
+        return this;
+    };
+
+    result.show$ = function(stateFunction) {
+        // TODO: think about how these could be cleaned up
+        const state = stateFunction.__parent;
+        if ( !state ) {
+            throw new TypeError("Show must be added on a state getter function!");
+        }
+        const [ geter,, watch ] = state;
+        const watcher = (value) => (this.style.display = value ? "block" : "none");
+        const unwatcher = watch(watcher);
+        watcher(geter());
+        this.__cleanup = unwatcher;
         return this;
     };
 
@@ -177,20 +212,21 @@ function router(routes) {
 }
 
 const mutationObserver = new MutationObserver((mutations) => {
-  for (const mutation of mutations) {
+    for (const mutation of mutations) {
     // Created nodes
     mutation.addedNodes.forEach(node => {
-      if (node.nodeType === 1 || node.nodeType === 3) {
-        node.dispatchEvent(new CustomEvent("dom:created", {bubbles: true}));
-      }
+        if (node.nodeType === 1 || node.nodeType === 3) {
+            node.dispatchEvent(new CustomEvent("dom:created", {bubbles: true}));
+        }
     });
     // Removed nodes
     mutation.removedNodes.forEach(node => {
-      if (node.nodeType === 1 || node.nodeType === 3) {
-        node.dispatchEvent(new CustomEvent("dom:removed", {bubbles: true}));
-      }
+        if (node.nodeType === 1 || node.nodeType === 3) {
+            node.dispatchEvent(new CustomEvent("dom:removed", {bubbles: true}));
+            console.debug("REMOVING NODE:\n", node);
+        }
     });
-  }
+    }
 });
 
 mutationObserver.observe(document.documentElement, { childList: true, subtree: true });
@@ -203,6 +239,7 @@ function ite$(stateFunction, thenTag, elseTag) {
     }
     const [ getter, setter, watch ] = state;
     
+    // TODO: clean the children up when they are removed
     const iteNode = span(getter()?thenTag:elseTag);
     watch(value => iteNode.firstChild.replaceWith(value?thenTag:elseTag));
     return iteNode;
@@ -214,12 +251,13 @@ function for$(stateFunction, itemComponentFunction) {
         throw new TypeError("For must be created on a state getter function of array!");
     }
     const [ getter, setter, watch ] = state;
-    const value = getter();
+    const items = getter();
     // NOTE: maybe check if there is such a thing as iterable in JS
-    if (!(value instanceof Array)) {
+    if (!(items instanceof Array)) {
         throw new TypeError("For must be created on a state getter function of array!");
     }
-    const forNode = span(span(...value.map(itemComponentFunction)));
-    watch(value => forNode.firstChild.replaceWith(span(...value.map(itemComponentFunction))));
+    // TODO: clean the children up when they are removed
+    const forNode = span(span(...items.map(itemComponentFunction)));
+    watch(items => forNode.firstChild.replaceWith(span(...items.map(itemComponentFunction))));
     return forNode;
 }
