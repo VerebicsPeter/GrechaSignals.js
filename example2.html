@@ -82,7 +82,7 @@
       const root = router({
         "/": div(
           TodoForm(),
-          for$(getTodos, TodoItem, {key: todo => todo.id})
+          for$(getTodos, TodoItem)
         )
       });
 

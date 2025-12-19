@@ -1,5 +1,8 @@
 const PRIMITIVE_TYPES = ["string", "number", "boolean"];
 
+const SYM_CLEANUP = Symbol("cleanup");
+const LOG_CLEANUP = true;
+
 function state$(initial) {
     const watchers = new Set();
     let value = initial;
@@ -11,7 +14,10 @@ function state$(initial) {
     };
     const addWatch = (watcher) => {
         watchers.add(watcher);
-        return () => delWatch(watcher);
+        return () => {
+            if (LOG_CLEANUP) console.debug(`Deleting watcher: ${watcher}`);
+            delWatch(watcher);
+        }
     }
     const delWatch = (watcher) => {
         watchers.delete(watcher);
@@ -27,12 +33,18 @@ function state$(initial) {
     return state;
 }
 
-function isStateObject(obj) {
+function isStateObj(obj) {
     return typeof(obj) === "object" && obj.__stateobject;
 }
 
-function isStateFunction(obj) {
-    return typeof(obj) === "function" && isStateObject(obj.__parent);
+function isStateFun(obj) {
+    return typeof(obj) === "function" && isStateObj(obj.__parent);
+}
+
+function normalizeState(obj) {
+    if (isStateObj(obj)) return obj;
+    if (isStateFun(obj)) return obj.__parent;
+    return null;
 }
 
 function normalizeDeps(deps) {
@@ -62,6 +74,7 @@ function derived$(deps, compute) {
         watch((_) => {dSetter(computeValue())})
     );
 
+    // TODO clean up deriveds with this
     dGetter.__cleanup = () => {
         for (const unwatcher of unwatchers) unwatcher();
     };
@@ -69,21 +82,22 @@ function derived$(deps, compute) {
     return [dGetter, dWatch];
 }
 
+// Remove node and its subtree
+function cleanupNode(node) {
+    node[SYM_CLEANUP]=true; node.remove();
+}
+
 function tag(name, ...children) {
     const result = document.createElement(name);
 
+    // Unwatchers for watchers owned by this node
+    const unwatchers = [];
+
     function registerStateObject(child) {
-        const [ getter, setter, watch, unwatch ] = child;
+        const [ getter, setter, watch ] = child;
         const currValue = getter();
         
         console.debug(`Reactive value: ${currValue}`);
-
-        const MakeRemoveHook = (callback) => {
-            return () => {
-                console.debug(`Removing the node watcher: ${callback}`);
-                unwatch(callback);
-            };
-        };
 
         const proxyNode = document.createElement("span");
         result.appendChild(proxyNode);
@@ -93,15 +107,17 @@ function tag(name, ...children) {
             const textNode = document.createTextNode(String(currValue));
             proxyNode.appendChild(textNode);
             const callback = (value) => proxyNode.firstChild.nodeValue = String(value);
-            watch(callback);
-            proxyNode.parentElement.addEventListener("dom:removed", MakeRemoveHook(callback));
+            const unwatcher = watch(callback);
+            unwatchers.push(unwatcher);
+            result.classList.add("__grechaproxy__");
         } 
         // encapsulate a complex value (node)
         else if (currValue instanceof Node) {
             proxyNode.appendChild(currValue);
             const callback = (value) => proxyNode.firstChild.replaceWith(value);
-            watch(callback);
-            proxyNode.parentElement.addEventListener("dom:removed", MakeRemoveHook(callback));
+            const unwatcher = watch(callback);
+            unwatchers.push(unwatcher);
+            result.classList.add("__grechaproxy__");
         }
         else {
             console.error(`Child was not an instance of a node or primitive:\n${currValue}`);
@@ -114,10 +130,10 @@ function tag(name, ...children) {
             result.appendChild(textNode);
         }
         // for now a 'StateObject' encapsulates a reactive value
-        else if (isStateObject(child)) {
+        else if (isStateObj(child)) {
             registerStateObject(child);
         }
-        else if (isStateFunction(child)) {
+        else if (isStateFun(child)) {
             registerStateObject(child.__parent);
         }
         // other children may not be reactive
@@ -152,19 +168,19 @@ function tag(name, ...children) {
     };
 
     result.show$ = function(stateFunction) {
-        // TODO: think about how these could be cleaned up
         const state = stateFunction.__parent;
         if ( !state ) {
             throw new TypeError("Show must be added on a state getter function!");
         }
         const [ geter,, watch ] = state;
-        const watcher = (value) => (this.style.display = value ? "block" : "none");
-        const unwatcher = watch(watcher);
-        watcher(geter());
-        this.__cleanup = unwatcher;
+        const callback = (value) => (this.style.display = value ? "block" : "none");
+        const unwatcher = watch(callback);
+        callback(geter());
+        this.__unwatchers.push(unwatcher);
         return this;
     };
 
+    result.__unwatchers = unwatchers;
     return result;
 }
 
@@ -211,53 +227,102 @@ function router(routes) {
     return result;
 }
 
-const mutationObserver = new MutationObserver((mutations) => {
-    for (const mutation of mutations) {
-    // Created nodes
-    mutation.addedNodes.forEach(node => {
-        if (node.nodeType === 1 || node.nodeType === 3) {
-            node.dispatchEvent(new CustomEvent("dom:created", {bubbles: true}));
-        }
-    });
-    // Removed nodes
-    mutation.removedNodes.forEach(node => {
-        if (node.nodeType === 1 || node.nodeType === 3) {
-            node.dispatchEvent(new CustomEvent("dom:removed", {bubbles: true}));
-            console.debug("REMOVING NODE:\n", node);
-        }
-    });
-    }
-});
-
-mutationObserver.observe(document.documentElement, { childList: true, subtree: true });
-
-
 function ite$(stateFunction, thenTag, elseTag) {
     const state = stateFunction.__parent;
     if ( !state ) {
         throw new TypeError("If-then-else must be created on a state getter function!");
     }
     const [ getter, setter, watch ] = state;
-    
-    // TODO: clean the children up when they are removed
+
     const iteNode = span(getter()?thenTag:elseTag);
     watch(value => iteNode.firstChild.replaceWith(value?thenTag:elseTag));
     return iteNode;
 }
 
-function for$(stateFunction, itemComponentFunction) {
+function for$(stateFunction, itemComponentFun , {id} = {id:item=>item}) {
     const state = stateFunction.__parent;
     if ( !state ) {
         throw new TypeError("For must be created on a state getter function of array!");
     }
     const [ getter, setter, watch ] = state;
-    const items = getter();
     // NOTE: maybe check if there is such a thing as iterable in JS
-    if (!(items instanceof Array)) {
+    if (!(getter() instanceof Array)) {
         throw new TypeError("For must be created on a state getter function of array!");
     }
-    // TODO: clean the children up when they are removed
-    const forNode = span(span(...items.map(itemComponentFunction)));
-    watch(items => forNode.firstChild.replaceWith(span(...items.map(itemComponentFunction))));
+
+    const forNode = span();
+    
+    let nodeMap = new Map();
+    const reconcile = (items) => {
+        const itemComponents = document.createDocumentFragment();
+        const newNodeMap = new Map();
+
+        for (const item of items) {
+            const key = id(item);
+            let node;
+            if (nodeMap.has(key)) {
+                // use the old value
+                node = nodeMap.get(key);
+                nodeMap.delete(key);
+            } else {
+                node = itemComponentFun(item);
+            }
+            newNodeMap.set(key, node);
+            itemComponents.appendChild(node);
+        }
+
+        nodeMap.forEach(node => cleanupNode(node));
+        nodeMap = newNodeMap;
+
+        forNode.replaceChildren(itemComponents);
+    }
+
+    reconcile(getter());
+    watch(reconcile);
+    
     return forNode;
 }
+
+
+const mutationObserver = new MutationObserver((mutations) => {
+    const cleanSubtree = (node) => {
+        const remWatchers = (node) => {
+            const unwatchers = node.__unwatchers;
+            if (!unwatchers || !unwatchers.length)
+                return;
+            if (!(unwatchers instanceof Array)) {
+                console.error("Node unwatchers is not an array, returning.")
+                console.debug(`Node unwatchers: ${unwatchers}`);
+                return;
+            }
+            if (LOG_CLEANUP)
+                console.debug(`Calling ${unwatchers.length} unwatcher(s).`);
+            for (const unwatcher of unwatchers) unwatcher();
+        }
+        remWatchers(node);
+        const proxyNodes = node.querySelectorAll(".__grechaproxy__");
+        proxyNodes.forEach(remWatchers);
+    }
+    
+    for (const mutation of mutations) {
+        // Created nodes
+        mutation.addedNodes.forEach(node => {
+            if (node.nodeType === 1 || node.nodeType === 3) {
+                // NOTE: add post create event emits here later
+            }
+        });
+        // Removed nodes
+        mutation.removedNodes.forEach(node => {
+            if (node.nodeType === 1 || node.nodeType === 3) {
+                // Remove all watchers in subtree before
+                // removing a node node marked for destruction
+                if (node[SYM_CLEANUP]) {
+                    console.debug("REMOVING NODE:\n", node);
+                    cleanSubtree(node);
+                }
+            }
+        });
+    }
+});
+
+mutationObserver.observe(document.documentElement, { childList: true, subtree: true });
