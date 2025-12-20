@@ -10,7 +10,7 @@
         {id:2, text:"buy bread", done:false},
       ];
 
-      const [showDoneOnly, setShowDoneOnly] = state$(false);
+      const [getShowDoneOnly, setShowDoneOnly] = state$(false);
       const [getTodos, setTodos, watchTodos] = state$(todos);
 
       const createTodo = (todo) => {
@@ -28,26 +28,25 @@
         const [getTodoId, setTodoId] = state$(getTodos().length);
         const [todoText, setTodoText, watchTodoText] = state$("");
         
-        const todoInput = 
-        input("text")
-        .att$("value", todoText())
-        .on$("input", (evt) => setTodoText(evt.target.value));
+        const submit = () => {
+          if (todoText()) {
+            setTodoId(getTodoId()+1)  // increment id
+            createTodo({ id: getTodoId(), text: todoText(), done:false })
+          } else {
+            alert("Please enter todo text.")
+          }
+        }
+
+        const todoInput = input("text")
+          .bind$("value", todoText)
+          .on$("keydown", evt=>evt.key==="Enter"&&submit());
         
         return div(
           div("Todo Text: ", todoInput),
-          
           button("Create Todo").
-          onclick$(() => {
-            if (todoText()) {
-              setTodoId(getTodoId()+1)  // increment id
-              createTodo({ id: getTodoId(), text: todoText(), done:false })
-            } else {
-              alert("Please enter todo text.")
-            }
-          }),
-          
-          button(ite$(showDoneOnly, "Show All", "Show Done")).
-          onclick$(()=>setShowDoneOnly(!showDoneOnly())),
+          onclick$(submit),
+          button(ite$(getShowDoneOnly, "Show All", "Show Done")).
+          onclick$(()=>setShowDoneOnly(!getShowDoneOnly())),
         );
       }
       
@@ -55,8 +54,8 @@
         const [getText, setText, watchText] = state$(todo.text);
         const [getDone, setDone, watchDone] = state$(todo.done);
         const [shouldShow] = derived$(
-          [showDoneOnly,getDone],
-          (showDoneOnly,getDone) => showDoneOnly ? getDone : true
+          [getShowDoneOnly,getDone],
+          (valShowDoneOnly,valDone) => valShowDoneOnly ? valDone : true
         );
 
         return div(
@@ -66,18 +65,12 @@
           .onclick$(() => removeTodo(todo)),
           button(ite$(getDone, "Mark Todo", "Mark Done"))
           .onclick$(() => {setDone(!getDone()); todo.done=getDone()}),
-          div("This todo is completed!")
-          .show$(getDone)
-          .style$({ fontSize: "11px" })
         )
         .show$(shouldShow)
         .style$({ border: "1px solid black", marginTop: "1px"});
       }
 
-      watchTodos((todos) => {
-        console.log("Todos changed:");
-        console.log(todos);
-      });
+      watchTodos(todos => console.log("Todos changed:", todos));
       
       const root = router({
         "/": div(

@@ -87,6 +87,9 @@ function cleanupNode(node) {
     node[SYM_CLEANUP]=true; node.remove();
 }
 
+// Inputs allowed for binding
+const MUNDANE_INPUTS = ["color", "date", "text", "textarea", "password", "number", "checkbox", "radio"];
+
 function tag(name, ...children) {
     const result = document.createElement(name);
 
@@ -178,6 +181,32 @@ function tag(name, ...children) {
         callback(geter());
         this.__unwatchers.push(unwatcher);
         return this;
+    };
+    
+    result.bind$ = function(attr, stateFunction) {
+        const state = stateFunction.__parent;
+        if ( !state ) {
+            throw new TypeError("Bind must be added on a state getter function!");
+        }
+        const inputType = result.getAttribute("type");
+        if (!MUNDANE_INPUTS.includes(inputType)) {
+            throw new TypeError(`Bind may only be added on allowed input types: ${MUNDANE_INPUTS}`);
+        }
+        const [ geter, setter, watch ] = state;
+        const callback = (value) => this[attr]=value;
+        const unwatcher = watch(callback);
+        callback(geter());
+        this.__unwatchers.push(unwatcher);
+        
+        let handler;
+        if (inputType === "number")
+            handler = (evt) => setter(Number(evt.target.value ||NaN));
+        else if (["checkbox", "radio"].includes(inputType))
+            handler = (evt) => setter(evt.target.checked);
+        else
+            handler = (evt) => setter(String(evt.target.value || ""));
+
+        return this.on$("input", handler);
     };
 
     result.__unwatchers = unwatchers;
@@ -317,12 +346,13 @@ const mutationObserver = new MutationObserver((mutations) => {
                 // Remove all watchers in subtree before
                 // removing a node node marked for destruction
                 if (node[SYM_CLEANUP]) {
-                    console.debug("REMOVING NODE:\n", node);
+                    console.debug("REMOVING NODE:", node);
                     cleanSubtree(node);
                 }
             }
         });
     }
 });
+
 
 mutationObserver.observe(document.documentElement, { childList: true, subtree: true });
