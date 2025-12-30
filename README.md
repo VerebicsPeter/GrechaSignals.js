@@ -7,7 +7,7 @@
 ## Quick Start
 
 ```html
-<<!DOCTYPE html>
+<!DOCTYPE html>
 <html>
   <head><title>Grecha Signals</title></head>
   <body>
