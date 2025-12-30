@@ -312,6 +312,22 @@ function for$(stateFunction, itemComponentFun , {id} = {id:item=>item}) {
     return forNode;
 }
 
+function lifecycle$(element, {onMounted=undefined, onRemoved=undefined}, once=false) {
+    const observer = new MutationObserver((mutations) => {
+        for (const mutation of mutations) {
+            mutation.addedNodes.forEach(node => {
+                if (node === element) onMounted?.();
+            });
+            mutation.removedNodes.forEach(node => {
+                if (node === element) onRemoved?.();
+                // disconnect after first remove if it is only meant to run once
+                if (once) observer.disconnect();
+            });
+        }
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+}
+
 
 const mutationObserver = new MutationObserver((mutations) => {
     const cleanSubtree = (node) => {
@@ -356,3 +372,26 @@ const mutationObserver = new MutationObserver((mutations) => {
 
 
 mutationObserver.observe(document.documentElement, { childList: true, subtree: true });
+
+
+export const Grecha = {
+    state$,
+    isStateObj,
+    isStateFun,
+    normalizeState,
+    derived$,
+    cleanupNode,
+    tag,
+    img,
+    input,
+    router,
+    ite$,
+    for$,
+    lifecycle$,
+    MUNDANE_TAGS,
+    MUNDANE_INPUTS,
+};
+
+for (const [k,v] of Object.entries(Grecha)) {
+    window[k] = v;
+}
