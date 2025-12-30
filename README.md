@@ -7,13 +7,13 @@
 ## Quick Start
 
 ```html
-<!DOCTYPE html>
+<<!DOCTYPE html>
 <html>
   <head><title>Grecha Signals</title></head>
   <body>
     <div id="entry"></div>
-    <script src="./grecha.js"></script>
-    <script>
+    <script type="module" src="../grecha.js"></script>
+    <script type="module">
       const LOREM = "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.";
       const kashaSoft = img("Kasha.png");
       const kashaHard = img("KashaHard.gif");
@@ -37,7 +37,7 @@
           h1("Grecha.js"),
           div(a("Foo").att$("href", "#/foo")),
           div(a("Bar").att$("href", "#/bar")),
-          div("Count: ", span(count)),
+          div("Count: ", input("number").bind$("value", count)),
           div("Count (x2): ", span(doubleCount)),
           div("Count (x4): ", span(quadrupleCount)),
           div("It's a: ", ite$(getToggle, span("foo"), span("bar")))
@@ -46,8 +46,7 @@
           .on$("mouseleave", onToggle),
           div(kasha)
           .style$({ cursor: "pointer" })
-          .onclick$(
-            () => {
+          .onclick$(() => {
               const newCount = count()+1
               setCount(newCount)
               setKasha((newCount % 2) ? kashaHard : kashaSoft)
