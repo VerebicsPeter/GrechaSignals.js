@@ -43,10 +43,10 @@
         
         return div(
           div("Todo Text: ", todoInput),
-          button("Create Todo").
-          onclick$(submit),
-          button(ite$(getShowDoneOnly, "Show All", "Show Done")).
-          onclick$(()=>setShowDoneOnly(!getShowDoneOnly())),
+          button("Create Todo")
+          .onclick$(submit),
+          button(ite$(getShowDoneOnly, "Show All", "Show Done"))
+          .onclick$(()=>setShowDoneOnly(!getShowDoneOnly())),
         );
       }
       

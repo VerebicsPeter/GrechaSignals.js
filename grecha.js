@@ -3,6 +3,28 @@ const PRIMITIVE_TYPES = ["string", "number", "boolean"];
 const SYM_CLEANUP = Symbol("cleanup");
 const LOG_CLEANUP = true;
 
+/**
+ * @typedef {() => void} Unwatcher
+ * @typedef {() => void} Refresher
+ */
+/**
+ * @template T
+ * @typedef {[
+ *   () => T,
+ *   (v: T) => void,
+ *   (watcher: (v: T) => void) => Unwatcher,
+ *   (watcher: (v: T) => void) => void,
+ *   Refresher
+ * ] & {
+ *   __stateobject: true
+ * }} StateObject
+ */
+
+/**
+ * @template T
+ * @param {T} initial
+ * @returns {StateObject<T>}
+ */
 function state$(initial) {
     const watchers = new Set();
     let value = initial;
@@ -372,7 +394,6 @@ const mutationObserver = new MutationObserver((mutations) => {
         });
     }
 });
-
 
 mutationObserver.observe(document.documentElement, { childList: true, subtree: true });
 

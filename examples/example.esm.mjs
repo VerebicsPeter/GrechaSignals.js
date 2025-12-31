@@ -54,7 +54,7 @@ const Foo = () => {
 };
 
 const Bar = () => {
-  const [isDark, setDark, watchDark ] = state$(false);
+  const [isDark, setDark, watchDark] = state$(false);
   const lorem = p(LOREM);
 
   watchDark(dark => {
