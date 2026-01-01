@@ -5,15 +5,12 @@ const LOREM = "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do e
 const kashaSoft = img("../Kasha.png");
 const kashaHard = img("../KashaHard.gif");
 
-const [count, setCount, watchCount] = state$(0);
-const [kasha, setKasha, watchKasha] = state$(kashaSoft);
+const [num1] = state$(0);
+const [num2] = state$(0);
 const [getToggle, setToggle] = state$(false);
-const [doubleCount] = derived$(count, (x) => 2*x);
-const [quadrupleCount] = derived$(doubleCount, (x) => 2*x);
-
-watchCount((count) => {
-  console.log(`Count changed to ${count}.`);
-});
+const [sum] = derived$([num1,num2], (v1,v2) => v1+v2);
+const [diff] = derived$([num1,num2], (v1,v2) => v1-v2);
+const [kashaHardness] = derived$(sum, (v) => v%2);
 
 const onToggle = () => setToggle(!getToggle());
 
@@ -21,21 +18,15 @@ const Home = () => div(
   h1("Grecha.js"),
   div(a("Foo").att$("href", "#/foo")),
   div(a("Bar").att$("href", "#/bar")),
-  div("Count: ", input("number").bind$("value", count)),
-  div("Count (x2): ", span(doubleCount)),
-  div("Count (x4): ", span(quadrupleCount)),
+  div("a = ", input("number").bind$("value", num1)),
+  div("b = ", input("number").bind$("value", num2)),
+  div("a + b = ", span(sum)),
+  div("a - b = ", span(diff)),
   div("It's a: ", ite$(getToggle, span("foo"), span("bar")))
   .style$({ border: "1px solid black" })
   .on$("mouseenter", onToggle)
   .on$("mouseleave", onToggle),
-  div(kasha)
-  .style$({ cursor: "pointer" })
-  .onclick$(() => {
-      const newCount = count()+1
-      setCount(newCount)
-      setKasha((newCount % 2) ? kashaHard : kashaSoft)
-    }
-  )
+  div(ite$(kashaHardness, kashaHard, kashaSoft))
 );
 
 const Foo = () => {

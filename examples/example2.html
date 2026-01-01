@@ -9,74 +9,90 @@
         {id:1, text:"buy milk", done:false},
         {id:2, text:"buy bread", done:false},
       ];
-
       const [getShowDoneOnly, setShowDoneOnly] = state$(false);
       const [getTodos, setTodos, watchTodos] = state$(todos);
+
+      const [filter] = derived$(
+        getShowDoneOnly,
+        (showDoneOnly) => (todo) => showDoneOnly ? todo.done : true
+      );
 
       const createTodo = (todo) => {
         const newTodos = getTodos();
         newTodos.push(todo);
         setTodos(newTodos);
-      }
+      };
 
       const removeTodo = (todo) => {
         const newTodos = getTodos().filter((other)=>other!==todo);
         setTodos(newTodos);
-      }
+      };
 
       const TodoForm = () => {
         const [getTodoId, setTodoId] = state$(getTodos().length);
-        const [todoText, setTodoText, watchTodoText] = state$("");
-        
+        const [todoText] = state$("");
+
         const submit = () => {
           if (todoText()) {
-            setTodoId(getTodoId()+1)  // increment id
-            createTodo({ id: getTodoId(), text: todoText(), done:false })
+            setTodoId(getTodoId() + 1); // increment id
+            createTodo({ id: getTodoId(), text: todoText(), done: false });
           } else {
-            alert("Please enter todo text.")
+            alert("Please enter todo text.");
           }
-        }
+        };
 
         const todoInput = input("text")
           .bind$("value", todoText)
-          .on$("keydown", evt=>evt.key==="Enter"&&submit());
-        
+          .on$("keydown", (evt) => evt.key === "Enter" && submit());
+
         return div(
           div("Todo Text: ", todoInput),
+          
           button("Create Todo")
-          .onclick$(submit),
+            .onclick$(submit),
+          
           button(ite$(getShowDoneOnly, "Show All", "Show Done"))
-          .onclick$(()=>setShowDoneOnly(!getShowDoneOnly())),
+            .onclick$(() => setShowDoneOnly(!getShowDoneOnly()))
         );
-      }
-      
+      };
+
       const TodoItem = (todo) => {
-        const [getText, setText, watchText] = state$(todo.text);
-        const [getDone, setDone, watchDone] = state$(todo.done);
-        const [shouldShow] = derived$(
-          [getShowDoneOnly,getDone],
-          (valShowDoneOnly,valDone) => valShowDoneOnly ? valDone : true
+        const [getText, setText] = state$(todo.text);
+        const [getDone, setDone] = state$(todo.done);
+        const [shouldShow, setShouldShow] = state$(
+          getShowDoneOnly() ? todo.done : true
         );
 
         return div(
-          div("Todo: ", span(getText)),
-          div("Done: ", span(getDone)),
-          button("Remove")
-          .onclick$(() => removeTodo(todo)),
-          button(ite$(getDone, "Mark Todo", "Mark Done"))
-          .onclick$(() => {setDone(!getDone()); todo.done=getDone()}),
-        )
-        .show$(shouldShow)
-        .style$({ border: "1px solid black", marginTop: "1px"});
-      }
+          div("Todo: ", span(getText).style$({ fontWeight: "bold" })),
+          div("Done: ", span(ite$(getDone, "Yes", "No"))),
 
-      watchTodos(todos => console.log("Todos changed:", todos));
-      
+          input("text")
+            .bind$("value", setText)
+            .on$("keyup", () => (todo.text = getText())),
+
+          button("Remove")
+            .onclick$(() => removeTodo(todo)),
+
+          button(ite$(getDone, "Mark Todo", "Mark Done"))
+            .onclick$(() => {
+              setDone(!getDone());
+              const isDone = getDone();
+              todo.done = isDone;
+              setShouldShow(getShowDoneOnly() ? isDone : true);
+            })
+        )
+          .show$(shouldShow)
+          .style$({ border: "1px solid black", marginTop: "1px"});
+      };
+
+      watchTodos((todos) => console.log("Todos changed:", todos));
+
       const root = router({
         "/": div(
           TodoForm(),
-          for$(getTodos, TodoItem)
-        )
+          for$(getTodos, TodoItem, { id: (todo) => todo.id, filter })
+        ),
       });
 
       entry.appendChild(root);
