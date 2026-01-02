@@ -1,22 +1,19 @@
 import { Grecha } from "../grecha.js";
 const { input, state$, derived$, ite$ } = Grecha;
 
-export const TodoItem = (todo, {getShowDoneOnly, removeTodo}) => {
-  const [getText, setText, watchText] = state$(todo.text);
+export const TodoItem = (todo, {filter, removeTodo}) => {
   const [getDone, setDone] = state$(todo.done);
+  const [getText, setText] = state$(todo.text);
   
-  watchText((text) => {
-    // sync UI state to the domain state
-    todo.text = text;
-  });
-  
-  const [shouldShow] = derived$(getDone, (done)=>{
+  const [shouldShow] = derived$([filter, getDone, getText],
+    (filter, done, text) => {
     // sync UI state to the domain state
     todo.done = done;
+    todo.text = text;
     // NOTE: 
-    // poll the dependency instead of adding a watcher to it,
+    // call the filter instead of adding a watcher for state,
     // this allows for better performance
-    return getShowDoneOnly() ? done : true;
+    return filter(todo);
   });
 
   return div(

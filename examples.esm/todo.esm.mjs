@@ -1,11 +1,13 @@
 import { Grecha } from "../grecha.js";
 const { router, for$ } = Grecha;
 import { useTodos } from "./useTodos.mjs";
-import { TodoForm } from "./todoForm.mjs";
-import { TodoItem } from "./todoItem.mjs";
+import { useTodoFilter } from "./useTodoFilter.mjs";
+import { TodoForm } from "./TodoForm.mjs";
+import { TodoItem } from "./TodoItem.mjs";
+import { TodoFilter } from "./TodoFilter.mjs";
 
 const todos = [];
-for (let i = 1; i <= 5; i++) {
+for (let i = 1; i <= 1000; i++) {
   todos[i - 1] = {
     id: i,
     text: `Todo item #${i}`,
@@ -15,20 +17,26 @@ for (let i = 1; i <= 5; i++) {
 
 const {
   getTodos,
-  getShowDoneOnly,
-  setShowDoneOnly,
-  filterDone,
   createTodo,
   removeTodo,
 } = useTodos(todos);
 
+const {
+  filterText,
+  filterDone,
+  filter, // derived filter function calculated based on filter state
+} = useTodoFilter();
+
 const root = router({
   "/": div(
-    TodoForm({ getTodos, createTodo, getShowDoneOnly, setShowDoneOnly }),
-    for$(getTodos, (todo) => TodoItem(todo, { getShowDoneOnly, removeTodo }), {
-      id: (todo) => todo.id,
-      filter: filterDone,
-    })
+    div(
+      TodoForm({ getTodos, createTodo })
+        .style$({marginRight: "0.5rem"}),
+      TodoFilter({ filterText, filterDone })
+        .style$({marginRight: "0.5rem"}),
+    )
+      .style$({display: "flex", marginBottom: "0.5rem"}),
+    for$(getTodos, (todo) => TodoItem(todo, { filter, removeTodo }), { id: (todo) => todo.id })
   ),
 });
 

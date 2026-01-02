@@ -9,13 +9,10 @@
         {id:1, text:"buy milk", done:false},
         {id:2, text:"buy bread", done:false},
       ];
-      const [getShowDoneOnly, setShowDoneOnly] = state$(false);
+
       const [getTodos, setTodos, watchTodos] = state$(todos);
 
-      const [filter] = derived$(
-        getShowDoneOnly,
-        (showDoneOnly) => (todo) => showDoneOnly ? todo.done : true
-      );
+      watchTodos((todos) => console.log("Todos changed:", todos));
 
       const createTodo = (todo) => {
         const newTodos = getTodos();
@@ -24,13 +21,41 @@
       };
 
       const removeTodo = (todo) => {
-        const newTodos = getTodos().filter((other)=>other!==todo);
+        const newTodos = getTodos().filter((other) => other !== todo);
         setTodos(newTodos);
       };
 
-      const TodoForm = () => {
-        const [getTodoId, setTodoId] = state$(getTodos().length);
+      const STATUSES = {
+        "all": "All",
+        "done": "Done",
+        "todo": "Todo",
+      };
+
+      const [filterText] = state$("");
+      const [filterDone] = state$("all");
+
+      const [filter] = derived$(
+        [filterText, filterDone],
+        (text, done) => (todo) => {
+          let passDone = false;
+          switch (done) {
+            case "all":
+              passDone = true;
+              break;
+            case "done":
+              passDone = !!todo.done;
+              break;
+            case "todo":
+              passDone = !!todo.done === false;
+              break;
+          }
+          return todo.text.includes(text) && passDone;
+        }
+      );
+
+      const TodoForm = ({ getTodos, createTodo }) => {
         const [todoText] = state$("");
+        const [getTodoId, setTodoId] = state$(getTodos().length);
 
         const submit = () => {
           if (todoText()) {
@@ -41,62 +66,75 @@
           }
         };
 
-        const todoInput = input("text")
-          .bind$("value", todoText)
-          .on$("keydown", (evt) => evt.key === "Enter" && submit());
-
         return div(
-          div("Todo Text: ", todoInput),
-          
-          button("Create Todo")
-            .onclick$(submit),
-          
-          button(ite$(getShowDoneOnly, "Show All", "Show Done"))
-            .onclick$(() => setShowDoneOnly(!getShowDoneOnly()))
+          p("Create Todo:"),
+          div(
+            input("text")
+              .bind$("value", todoText)
+              .on$("keydown", (evt) => evt.key === "Enter" && submit())
+          ),
+          button("Create Todo").onclick$(submit)
         );
       };
-
-      const TodoItem = (todo) => {
-        const [getText, setText] = state$(todo.text);
-        const [getDone, setDone] = state$(todo.done);
-        const [shouldShow, setShouldShow] = state$(
-          getShowDoneOnly() ? todo.done : true
+      
+      const TodoFilter = ({ filterText, filterDone }) => {
+        const filterTextInput = input("text")
+          .bind$("value", filterText);
+        const filterDoneInput = select(STATUSES)
+          .bind$("value", filterDone);
+        
+        return div(
+          p("Filter Todos:"),
+          div("Text: ", filterTextInput),
+          div("Done: ", filterDoneInput),
         );
+      };
+      
+      const TodoItem = (todo, {filter, removeTodo}) => {
+        const [getDone, setDone] = state$(todo.done);
+        const [getText, setText] = state$(todo.text);
+        
+        const [shouldShow] = derived$([filter, getDone, getText],
+          (filter, done, text) => {
+          // sync UI state to the domain state
+          todo.done = done;
+          todo.text = text;
+          // NOTE: 
+          // call the filter instead of adding a watcher for state,
+          // this allows for better performance
+          return filter(todo);
+        });
 
         return div(
           div("Todo: ", span(getText).style$({ fontWeight: "bold" })),
           div("Done: ", span(ite$(getDone, "Yes", "No"))),
 
           input("text")
-            .bind$("value", setText)
-            .on$("keyup", () => (todo.text = getText())),
+            .bind$("value", setText),
 
           button("Remove")
-            .onclick$(() => removeTodo(todo)),
+            .on$("click", () => removeTodo(todo)),
 
           button(ite$(getDone, "Mark Todo", "Mark Done"))
-            .onclick$(() => {
-              setDone(!getDone());
-              const isDone = getDone();
-              todo.done = isDone;
-              setShouldShow(getShowDoneOnly() ? isDone : true);
-            })
+            .on$("click", () => setDone(!getDone()))
         )
           .show$(shouldShow)
           .style$({ border: "1px solid black", marginTop: "1px"});
       };
 
-      watchTodos((todos) => console.log("Todos changed:", todos));
-
       const root = router({
         "/": div(
-          TodoForm(),
-          for$(getTodos, TodoItem, { id: (todo) => todo.id, filter })
+          div(
+            TodoForm({ getTodos, createTodo })
+              .style$({marginRight: "0.5rem"}),
+            TodoFilter({ filterText, filterDone })
+              .style$({marginRight: "0.5rem"}),
+          )
+            .style$({display: "flex", marginBottom: "0.5rem"}),
+          for$(getTodos, (todo) => TodoItem(todo, { filter, removeTodo }), { id: (todo) => todo.id })
         ),
       });
-
       entry.appendChild(root);
-      window.getTodos = getTodos
     </script>
   </body>
 </html>

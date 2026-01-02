@@ -1,14 +1,8 @@
 import { Grecha } from "../grecha.js";
-const { state$, derived$ } = Grecha;
+const { state$ } = Grecha;
 
 export function useTodos(todos) {
   const [getTodos, setTodos, watchTodos] = state$(todos);
-  const [getShowDoneOnly, setShowDoneOnly] = state$(false);
-  
-  const [filterDone] = derived$(
-    getShowDoneOnly,
-    (showDoneOnly) => (todo) => showDoneOnly ? todo.done : true
-  );
 
   watchTodos((todos) => console.log("Todos changed:", todos));
 
@@ -17,18 +11,15 @@ export function useTodos(todos) {
     newTodos.push(todo);
     setTodos(newTodos);
   };
-  
+
   const removeTodo = (todo) => {
     const newTodos = getTodos().filter((other) => other !== todo);
     setTodos(newTodos);
   };
-  
+
   return {
     getTodos,
     setTodos,
-    getShowDoneOnly,
-    setShowDoneOnly,
-    filterDone,
     createTodo,
     removeTodo,
   };

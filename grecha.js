@@ -5,6 +5,18 @@ const PRIMITIVE_TYPES = ["string", "number", "boolean"];
 const SYM_CLEANUP = Symbol("cleanup");
 const LOG_CLEANUP = true;
 
+const schedule = (() => {
+  if (typeof scheduler !== "undefined" && scheduler.postTask) {
+    return fn => scheduler.postTask(fn, { priority: "user-visible" });
+  }
+  else if (typeof requestAnimationFrame !== "undefined") {
+    return fn => requestAnimationFrame(fn);
+  } else {
+    return fn => setTimeout(fn, 0);
+  }
+
+})();
+
 /**
  * @typedef {() => void} Unwatcher
  * @typedef {() => void} Refresher
@@ -34,8 +46,28 @@ function state$(initial) {
   const get = () => value;
   const set = (newValue) => {
     value = newValue;
-    for (const watcher of watchers) watcher(value);
+
+    // Naive (sync)
+    //for (const watcher of watchers) watcher(value)
+    
+    // Run batch for 4ms and yield back scheduling next batch
+    const items = [...watchers];
+  
+    function runBatch() {
+      const start = performance.now();
+      while (
+        items.length && performance.now() - start < 4) {
+        const watcher = items.shift();
+        watcher(value);
+      }
+      if(items.length) {
+        schedule(runBatch);
+      }
+    }
+  
+    runBatch();
   };
+
   const addWatch = (watcher) => {
     watchers.add(watcher);
     return () => {
@@ -43,9 +75,11 @@ function state$(initial) {
       delWatch(watcher);
     };
   };
+
   const delWatch = (watcher) => {
     watchers.delete(watcher);
   };
+
   const refresh = () => set(get());
 
   const state = [get, set, addWatch, delWatch, refresh];
@@ -224,10 +258,12 @@ function tag(name, ...children) {
     if (!state) {
       throw new TypeError("Bind must be added on a state getter function!");
     }
+
+    const isSelect = result.tagName === "SELECT";
     const inputType = result.getAttribute("type");
-    if (!MUNDANE_INPUTS.includes(inputType)) {
+    if (!(isSelect || MUNDANE_INPUTS.includes(inputType))) {
       throw new TypeError(
-        `Bind may only be added on allowed input types: ${MUNDANE_INPUTS}`
+        `Bind may only be added on select or allowed input types: ${MUNDANE_INPUTS}`
       );
     }
     const [geter, setter, watch] = state;
@@ -241,9 +277,11 @@ function tag(name, ...children) {
       handler = (evt) => setter(Number(evt.target.value || NaN));
     else if (["checkbox", "radio"].includes(inputType))
       handler = (evt) => setter(evt.target.checked);
-    else handler = (evt) => setter(String(evt.target.value || ""));
+    else // select or mundane input types
+      handler = (evt) => setter(String(evt.target.value || ""));
 
-    return this.on$("input", handler);
+    const evtName = isSelect ? "change" : "input";
+    return this.on$(evtName, handler);
   };
 
   result.hook$ = function ({
@@ -277,9 +315,9 @@ const MUNDANE_TAGS = [
   "h3",
   "p",
   "a",
+  "hr",
   "div",
   "span",
-  "select",
   "button",
 ];
 for (let tagName of MUNDANE_TAGS) {
@@ -292,6 +330,16 @@ function img(src) {
 
 function input(type) {
   return tag("input").att$("type", type);
+}
+
+function select(options) {
+  const entries = Object.entries(options);
+  return tag(
+    "select",
+    ... entries.map(([opt, optName]) =>
+      tag("option", optName).att$("value", opt)
+    )
+  );
 }
 
 function router(routes) {
@@ -341,7 +389,7 @@ function ite$(stateFunction, thenTag, elseTag) {
 function for$(
   stateFunction,
   itemComponentFun,
-  { id = (item) => item, filter = undefined } = {}
+  { id = (item) => item } = {}
 ) {
   const state = stateFunction.__parent;
   if (!state) {
@@ -357,25 +405,12 @@ function for$(
     );
   }
 
-  let filterGetter = null;
-  if (filter) {
-    if (!normalizeState(filter)) {
-      throw new TypeError(
-        "For filter must be a reactive state object."
-      );
-    } else {
-      filter = normalizeState(filter);
-      filterGetter = filter[0];
-    }
-  }
-
   const forNode = span();
   let nodeMap = new Map();
 
   const reconcile = (items) => {
     const itemComponents = document.createDocumentFragment();
     const newNodeMap = new Map();
-    const currentFilter = filter ? filterGetter() : null;
 
     for (const item of items) {
       const key = id(item);
@@ -386,10 +421,6 @@ function for$(
         nodeMap.delete(key);
       } else {
         node = itemComponentFun(item);
-      }
-      // Apply filter immediately to new or reused nodes
-      if (currentFilter) {
-        node.style.display = currentFilter(item) ? "" : "none";
       }
       newNodeMap.set(key, node);
       itemComponents.appendChild(node);
@@ -403,46 +434,6 @@ function for$(
 
   reconcile(getter());
   watch(reconcile);
-
-  if (filter) {
-    const [, , watchFilter] = filter;
-    let animationFrameId = null;
-
-    watchFilter((currentFilter) => {
-      // Cancel any pending filter task if a new one starts (debouncing)
-      if (animationFrameId) cancelAnimationFrame(animationFrameId);
-
-      const items = getter();
-      const total = items.length;
-      const chunkSize = 200; // Adjust based on performance testing
-      let index = 0;
-
-      function processChunk() {
-        const end = Math.min(index + chunkSize, total);
-
-        for (; index < end; index++) {
-          const item = items[index];
-          const node = nodeMap.get(id(item));
-          if (node) {
-            const shouldShow = currentFilter(item);
-            // Minimal DOM interaction
-            if (node.style.display !== (shouldShow ? "" : "none")) {
-              node.style.display = shouldShow ? "" : "none";
-            }
-          }
-        }
-
-        if (index < total) {
-          // More items to process, schedule next chunk
-          animationFrameId = requestAnimationFrame(processChunk);
-        } else {
-          animationFrameId = null;
-        }
-      }
-
-      animationFrameId = requestAnimationFrame(processChunk);
-    });
-  }
 
   return forNode;
 }
@@ -502,6 +493,7 @@ export const Grecha = {
   tag,
   img,
   input,
+  select,
   router,
   ite$,
   for$,
