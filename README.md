@@ -2,7 +2,7 @@
 
 ![KashaHard](KashaHard.gif)
 
-**Grecha Signals** is an experimental fork of [Grecha.js](https://github.com/tsoding/grecha.js) by Alexey Kutepov. It explores signal-based reactivity where state updates directly mutate the DOM. It allows basic reactivity without a virtual DOM, JSX, or any build steps. Sadly the library could not be kept to 69 LoC :).
+**Grecha Signals** is an experimental fork of [Grecha.js](https://github.com/tsoding/grecha.js). It explores signal-based reactivity where state updates directly mutate the DOM. It allows basic reactivity without a virtual DOM, JSX, or any build steps. Sadly the library could not be kept to 69 LoC :).
 
 ## Quick Start
 
